@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ЧекСтоп — Telegram Mini App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: oklch(94% 0.012 70); font-family: 'Manrope', system-ui, sans-serif; color: oklch(22% 0.012 60); }
+  * { box-sizing: border-box; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: oklch(85% 0.012 70); border-radius: 3px; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="components/i18n.jsx"></script>
+<script type="text/babel" src="components/icons.jsx"></script>
+<script type="text/babel" src="components/android-frame.jsx"></script>
+<script type="text/babel" src="components/miniapp.jsx"></script>
+<script type="text/babel" src="components/admin.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "lang": "ru",
+  "screen": "home"
+}/*EDITMODE-END*/;
+
+// ─── Mock data ────────────────────────────────────────
+const MOCK_MEMBERS = [
+  { name: 'Айгерим Н.',  initials: 'АН', bg: 'oklch(66% 0.14 40)',  role: 'owner', online: true,  checks: 132 },
+  { name: 'Бакыт С.',    initials: 'БС', bg: 'oklch(60% 0.13 200)', role: 'admin', online: true,  checks: 87 },
+  { name: 'Динара К.',   initials: 'ДК', bg: 'oklch(60% 0.11 155)', role: 'staff', online: false, checks: 41 },
+  { name: 'Марат Е.',    initials: 'МЕ', bg: 'oklch(60% 0.13 280)', role: 'staff', online: true,  checks: 28 },
+];
+
+// Queue items — PDFs waiting on decisions
+const MOCK_QUEUE = [
+  {
+    opId: '4781-9940', amount: 18500, sender: 'Жанна А.',
+    uploadedBy: 'Бакыт С.', timeLabel: '2 мин назад',
+    viewedBy: [{ initials: 'АН', bg: 'oklch(66% 0.14 40)' }, { initials: 'БС', bg: 'oklch(60% 0.13 200)' }],
+    status: 'pending',
+    recipient: 'Айгерим Н.', date: '19.04.2026 14:08',
+  },
+  {
+    opId: '4781-9935', amount: 7300, sender: 'Руслан К.',
+    uploadedBy: 'Динара К.', timeLabel: '18 мин назад',
+    viewedBy: [{ initials: 'ДК', bg: 'oklch(60% 0.11 155)' }],
+    status: 'pending',
+    recipient: 'Айгерим Н.', date: '19.04.2026 13:52',
+  },
+  {
+    opId: '4781-9928', amount: 55000, sender: 'Неизвестный',
+    uploadedBy: 'Марат Е.', timeLabel: '1 ч назад',
+    viewedBy: [{ initials: 'МЕ', bg: 'oklch(60% 0.13 280)' }, { initials: 'АН', bg: 'oklch(66% 0.14 40)' }, { initials: 'БС', bg: 'oklch(60% 0.13 200)' }],
+    status: 'pending',
+    recipient: 'Айгерим Н.', date: '19.04.2026 13:10',
+  },
+];
+
+const MOCK_RECENT = [
+  { sender: 'Дмитрий К.',  opId: '4781-9923', amount: 12500, status: 'verified', timeLabel: '14:22',
+    date: '19.04.2026 14:22', recipient: 'Айгерим Н.',
+    decidedBy: 'Айгерим Н.', decidedByInitials: 'АН', decidedByAvatarBg: 'oklch(66% 0.14 40)',
+    audit: [
+      { kind: 'upload',  who: 'Бакыт С.',   text: 'загрузил PDF',           time: '14:20' },
+      { kind: 'view',    who: 'Динара К.',  text: 'посмотрела чек',         time: '14:21' },
+      { kind: 'approve', who: 'Айгерим Н.', text: 'подтвердила платёж',     time: '14:22' },
+    ] },
+  { sender: 'Алия Б.',     opId: '4781-8810', amount: 3200,  status: 'verified', timeLabel: '11:05',
+    date: '19.04.2026 11:05', recipient: 'Айгерим Н.',
+    decidedBy: 'Бакыт С.', decidedByInitials: 'БС', decidedByAvatarBg: 'oklch(60% 0.13 200)',
+    audit: [
+      { kind: 'upload',  who: 'Динара К.',  text: 'загрузила PDF',          time: '11:02' },
+      { kind: 'approve', who: 'Бакыт С.',   text: 'подтвердил платёж',      time: '11:05' },
+    ] },
+  { sender: 'Неизвестный', opId: '0000-0000', amount: 45000, status: 'fraud',    timeLabel: 'Вчера 19:40',
+    date: '18.04.2026 19:40', recipient: '—',
+    decidedBy: 'Айгерим Н.', decidedByInitials: 'АН', decidedByAvatarBg: 'oklch(66% 0.14 40)',
+    audit: [
+      { kind: 'upload',  who: 'Марат Е.',    text: 'загрузил PDF',          time: '19:30' },
+      { kind: 'view',    who: 'Бакыт С.',    text: 'пометил подозрительным', time: '19:35' },
+      { kind: 'reject',  who: 'Айгерим Н.',  text: 'отклонила: поддельный PDF', time: '19:40' },
+    ] },
+  { sender: 'Бекжан Т.',   opId: '4778-2210', amount: 8700,  status: 'verified', timeLabel: 'Вчера 15:10',
+    date: '18.04.2026 15:10', recipient: 'Айгерим Н.',
+    decidedBy: 'Айгерим Н.', decidedByInitials: 'АН', decidedByAvatarBg: 'oklch(66% 0.14 40)',
+    audit: [
+      { kind: 'upload',  who: 'Айгерим Н.', text: 'загрузила PDF',         time: '15:09' },
+      { kind: 'approve', who: 'Айгерим Н.', text: 'подтвердила платёж',    time: '15:10' },
+    ] },
+  { sender: 'Сауле М.',    opId: '4775-6601', amount: 22000, status: 'pending',  timeLabel: '14 апр',
+    date: '14.04.2026 09:30', recipient: 'Айгерим Н.', audit: [
+      { kind: 'upload', who: 'Марат Е.', text: 'загрузил PDF', time: '09:30' },
+    ] },
+  { sender: 'Ержан Ж.',    opId: '4772-1108', amount: 5400,  status: 'verified', timeLabel: '12 апр',
+    date: '12.04.2026 18:45', recipient: 'Айгерим Н.',
+    decidedBy: 'Динара К.', decidedByInitials: 'ДК', decidedByAvatarBg: 'oklch(60% 0.11 155)',
+    audit: [
+      { kind: 'upload',  who: 'Ержан Ж.',   text: 'переслал PDF',          time: '18:44' },
+      { kind: 'approve', who: 'Динара К.',  text: 'подтвердила платёж',    time: '18:45' },
+    ] },
+];
+
+const MOCK_ACTIVITY = [
+  { kind: 'verified', who: 'Айгерим Н.', text: 'подтвердила платёж 12 500 ₸', time: '2 мин назад' },
+  { kind: 'fraud',    who: 'Айгерим Н.', text: 'отклонила PDF 45 000 ₸',      time: '14 мин назад' },
+  { kind: 'verified', who: 'Бакыт С.',   text: 'подтвердил платёж 3 200 ₸',   time: '1 ч назад' },
+  { kind: 'member',   who: 'Марат Е.',   text: 'присоединился к команде',     time: '3 ч назад' },
+];
+const MOCK_ACTIVITY_KZ = [
+  { kind: 'verified', who: 'Айгерім Н.', text: '12 500 ₸ төлемін растады',  time: '2 мин бұрын' },
+  { kind: 'fraud',    who: 'Айгерім Н.', text: '45 000 ₸ PDF қабылдамады', time: '14 мин бұрын' },
+  { kind: 'verified', who: 'Бақыт С.',   text: '3 200 ₸ төлемін растады',    time: '1 сағ бұрын' },
+  { kind: 'member',   who: 'Марат Е.',   text: 'командаға қосылды',          time: '3 сағ бұрын' },
+];
+
+const MOCK_STATS = { verified: 287, fraud: 4, pending: MOCK_QUEUE.length, amount: 1842500 };
+
+const { TgMiniHeader, HomeScreen, UploadScreen, ModerationScreen, ApiKeyModal, CheckingScreen, ResultScreen, QueueScreen, HistoryScreen, COLORS } = window.MiniApp;
+
+function App() {
+  const [tweaks, setTweaks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('chekstop_tweaks') || 'null') || TWEAK_DEFAULTS; }
+    catch { return TWEAK_DEFAULTS; }
+  });
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [activeResult, setActiveResult] = useState(MOCK_RECENT[0]);
+  const [activeQueue, setActiveQueue] = useState(MOCK_QUEUE[0]);
+  const [apiKeyOpen, setApiKeyOpen] = useState(false);
+  const screen = tweaks.screen;
+  const lang = tweaks.lang;
+  const setScreen = (s) => updateTweaks({ screen: s });
+  const setLang = (l) => updateTweaks({ lang: l });
+
+  function updateTweaks(patch) {
+    const next = { ...tweaks, ...patch };
+    setTweaks(next);
+    localStorage.setItem('chekstop_tweaks', JSON.stringify(next));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*');
+  }
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const t = window.I18N[lang];
+
+  function showResult(r) { setActiveResult(r); setScreen('result'); }
+  function openQueueItem(q) { setActiveQueue(q); setScreen('moderation'); }
+  function handleDecision(status, apiKey) {
+    const base = {
+      ...activeQueue, status,
+      decidedBy: 'Айгерим Н.', decidedByInitials: 'АН', decidedByAvatarBg: 'oklch(66% 0.14 40)',
+      timeLabel: 'только что',
+      apiKey: apiKey || null,
+    };
+    const audit = [
+      { kind: 'upload',  who: activeQueue.uploadedBy, text: 'загрузил PDF', time: activeQueue.timeLabel },
+    ];
+    if (status === 'verified') {
+      audit.push({ kind: 'key', who: 'Айгерим Н.', text: `ввела API ключ ${apiKey.slice(0, 12)}…`, time: 'только что' });
+      audit.push({ kind: 'approve', who: 'Айгерим Н.', text: 'подтвердила платёж', time: 'только что' });
+      audit.push({ kind: 'sent', who: 'Бот', text: `отправил ключ клиенту ${activeQueue.sender}`, time: 'только что' });
+    } else {
+      audit.push({ kind: 'reject', who: 'Айгерим Н.', text: 'отклонила PDF', time: 'только что' });
+    }
+    setActiveResult({ ...base, audit });
+    setScreen('result');
+  }
+
+  const recentLocalized = MOCK_RECENT.map(r => {
+    if (lang === 'kz') return { ...r, timeLabel: r.timeLabel.replace('Вчера', 'Кеше').replace('апр', 'сәу') };
+    return r;
+  });
+
+  let content;
+  if (screen === 'home') {
+    content = <HomeScreen t={t}
+      onUpload={() => setScreen('upload')}
+      onQueue={() => setScreen('queue')}
+      onResult={showResult}
+      queue={MOCK_QUEUE}
+      recent={recentLocalized.slice(0, 3)}
+      todayCount={4} todaySum={24400} />;
+  } else if (screen === 'upload') {
+    content = <UploadScreen t={t} lang={lang} onUploaded={() => setScreen('queue')} />;
+  } else if (screen === 'queue') {
+    content = <QueueScreen t={t} lang={lang} queue={MOCK_QUEUE} onOpen={openQueueItem} />;
+  } else if (screen === 'moderation') {
+    content = <ModerationScreen t={t} lang={lang} result={activeQueue}
+      onApprove={() => setApiKeyOpen(true)}
+      onReject={() => handleDecision('fraud')}
+      onAskTeam={() => {}} />;
+  } else if (screen === 'checking') {
+    content = <CheckingScreen t={t} />;
+  } else if (screen === 'result') {
+    content = <ResultScreen t={t} result={activeResult}
+      onDone={() => setScreen('home')}
+      onCheckAnother={() => setScreen('upload')} />;
+  } else if (screen === 'history') {
+    content = <HistoryScreen t={t} lang={lang} recent={recentLocalized} onResult={showResult} />;
+  }
+
+  const headerProps = (() => {
+    if (screen === 'home')       return { title: t.appName, subtitle: t.appTagline, badge: MOCK_QUEUE.length || null };
+    if (screen === 'upload')     return { title: t.uploadPdf, subtitle: t.appName, onBack: () => setScreen('home') };
+    if (screen === 'queue')      return { title: t.queue, subtitle: `${MOCK_QUEUE.length} ${t.checks}`, onBack: () => setScreen('home') };
+    if (screen === 'moderation') return { title: t.needsReview, subtitle: t.appName, onBack: () => setScreen('queue') };
+    if (screen === 'checking')   return { title: t.checking, subtitle: t.appName };
+    if (screen === 'result')     return { title: t.appName, subtitle: t.appTagline, onBack: () => setScreen('home') };
+    if (screen === 'history')    return { title: t.history, subtitle: t.appName, onBack: () => setScreen('home') };
+    return {};
+  })();
+
+  return (
+    <div style={{
+      minHeight: '100vh', padding: '40px 32px', display: 'flex',
+      alignItems: 'flex-start', justifyContent: 'center', gap: 36, flexWrap: 'wrap',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <div data-screen-label={`Mini App / ${screen}`}>
+          <PhoneWithMiniApp lang={lang} setLang={setLang} headerProps={headerProps}>
+            {content}
+            {apiKeyOpen && (
+              <ApiKeyModal t={t} lang={lang} result={activeQueue}
+                onCancel={() => setApiKeyOpen(false)}
+                onConfirm={(apiKey) => { setApiKeyOpen(false); handleDecision('verified', apiKey); }} />
+            )}
+          </PhoneWithMiniApp>
+        </div>
+        <ScreenSwitcher screen={screen} setScreen={setScreen} lang={lang} />
+      </div>
+
+      <div data-screen-label="Admin panel">
+        <window.AdminPanel t={t} lang={lang}
+          members={MOCK_MEMBERS.map(m => ({ ...m, avatarBg: m.bg }))}
+          activity={lang === 'ru' ? MOCK_ACTIVITY : MOCK_ACTIVITY_KZ}
+          stats={MOCK_STATS} recent={recentLocalized}
+          queueCount={MOCK_QUEUE.length} />
+      </div>
+
+      {tweaksOpen && (
+        <TweaksPanel tweaks={tweaks} update={updateTweaks} onClose={() => {
+          setTweaksOpen(false);
+          window.parent.postMessage({ type: '__edit_mode_close' }, '*');
+        }} />
+      )}
+    </div>
+  );
+}
+
+function PhoneWithMiniApp({ children, lang, setLang, headerProps }) {
+  return (
+    <window.AndroidDevice width={392} height={820}>
+      <div style={{
+        height: 50, background: '#fff', borderBottom: '1px solid oklch(92% 0.005 240)',
+        display: 'flex', alignItems: 'center', padding: '0 12px', gap: 10,
+        fontFamily: 'system-ui, sans-serif',
+      }}>
+        <div style={{ color: '#3390ec' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </div>
+        <div style={{
+          width: 30, height: 30, borderRadius: '50%', background: 'oklch(66% 0.14 40)',
+          display: 'grid', placeItems: 'center', color: '#fff',
+        }}><Icon name="shield-check" size={16} strokeWidth={2.5} /></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#000' }}>ЧекСтоп</div>
+          <div style={{ fontSize: 11, color: '#3390ec' }}>mini app</div>
+        </div>
+        <div style={{ color: '#707579' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </div>
+      </div>
+
+      <div style={{ background: 'oklch(98% 0.008 80)', minHeight: 'calc(100% - 50px)' }}>
+        <window.MiniApp.TgMiniHeader lang={lang} onLang={() => setLang(lang === 'ru' ? 'kz' : 'ru')} {...headerProps} />
+        {children}
+      </div>
+    </window.AndroidDevice>
+  );
+}
+
+function ScreenSwitcher({ screen, setScreen, lang }) {
+  const screens = [
+    { id: 'home',       label: lang === 'ru' ? 'Главная' : 'Басты' },
+    { id: 'upload',     label: lang === 'ru' ? 'Загрузка' : 'Жүктеу' },
+    { id: 'queue',      label: lang === 'ru' ? 'Очередь' : 'Кезек' },
+    { id: 'moderation', label: lang === 'ru' ? 'Проверка' : 'Тексеру' },
+    { id: 'result',     label: lang === 'ru' ? 'Результат' : 'Нәтиже' },
+    { id: 'history',    label: lang === 'ru' ? 'История' : 'Тарих' },
+  ];
+  return (
+    <div style={{
+      display: 'flex', gap: 4, padding: 4,
+      background: '#fff', borderRadius: 12, border: '1px solid oklch(92% 0.008 70)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.04)', flexWrap: 'wrap', justifyContent: 'center',
+      maxWidth: 400,
+    }}>
+      {screens.map(s => (
+        <button key={s.id} onClick={() => setScreen(s.id)} style={{
+          padding: '7px 11px', fontSize: 12, fontWeight: 600,
+          background: screen === s.id ? 'oklch(94% 0.04 50)' : 'transparent',
+          color: screen === s.id ? 'oklch(38% 0.13 40)' : 'oklch(45% 0.015 60)',
+          border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+        }}>{s.label}</button>
+      ))}
+    </div>
+  );
+}
+
+function TweaksPanel({ tweaks, update, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 20, right: 20, width: 280,
+      background: '#fff', borderRadius: 14, border: '1px solid oklch(92% 0.008 70)',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.18)', padding: 16,
+      fontFamily: 'Manrope, sans-serif', zIndex: 100,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'oklch(22% 0.012 60)' }}>Tweaks</div>
+        <button onClick={onClose} style={{
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          color: 'oklch(45% 0.015 60)', padding: 4, display: 'grid', placeItems: 'center',
+        }}><Icon name="x" size={16} /></button>
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'oklch(62% 0.012 60)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+        Язык / Тіл
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {[['ru', 'Русский'], ['kz', 'Қазақша']].map(([k, l]) => (
+          <button key={k} onClick={() => update({ lang: k })} style={{
+            flex: 1, padding: '9px 10px', fontSize: 12, fontWeight: 600,
+            background: tweaks.lang === k ? 'oklch(66% 0.14 40)' : 'oklch(96% 0.014 75)',
+            color: tweaks.lang === k ? '#fff' : 'oklch(45% 0.015 60)',
+            border: '1px solid oklch(92% 0.008 70)',
+            borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+          }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'oklch(62% 0.012 60)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+        Экран
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        {['home', 'upload', 'queue', 'moderation', 'result', 'history'].map(s => (
+          <button key={s} onClick={() => update({ screen: s })} style={{
+            padding: '8px 10px', fontSize: 12, fontWeight: 600,
+            background: tweaks.screen === s ? 'oklch(94% 0.04 50)' : 'oklch(96% 0.014 75)',
+            color: tweaks.screen === s ? 'oklch(38% 0.13 40)' : 'oklch(45% 0.015 60)',
+            border: '1px solid oklch(92% 0.008 70)',
+            borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+          }}>{s}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
